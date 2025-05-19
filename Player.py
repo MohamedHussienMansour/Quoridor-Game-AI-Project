@@ -1,11 +1,16 @@
 from Board import Board
+from collections import deque
+import math
+import copy
 class Player:
     players=[]
     positions=[]
+    objectives=[]
     board=Board()
     pid=0
     def __init__(self,pos,objective,no_wall=10):
         self.objective=objective
+        Player.objectives.append(objective)
         Player.pid+=1
         self.id=Player.pid
         Player.players.append(Player.pid)
@@ -264,172 +269,87 @@ class Player:
         Player.board.board[meanX,meanY]=-1
         Player.board.board[X1,Y1]=-1
         Player.board.board[X2,Y2]=-1
-    def WallRestrictionAlgorithms(self):
-        
-        for i in range(1,Player.pid+1):
-            if (i==self.id):
-                continue
-            stackofStates=[]
-            TraveledState=[]
-            posY,posX=Player.positions[i-1]
-            if(self.id==1):
-                direction=1
-                endY=17
-            else:
-                direction=-1
-                endY=-1
-            posY+=direction
-            start=False
-            if (Player.board.board[posX,posY]!=0):
-                start=True
-            
-            
-            while(start or posY+1!=self.objective):
-                start=False
-                
-                while(Player.board.board[posY,posX]==0 and posY!=endY and (posX,posY) not in TraveledState):
-                    posY+=direction*2
-                if (posY==endY):
-                    return True
-                
-                rightleftChance=2
-                savedX=posX
-                thereIsChance=False
-                
-                for Xchange,end in [-1,-1],[1,17]:
-                    posX=savedX
-                    while(posX+Xchange!=end and Player.board.board[posY-direction,posX+Xchange]==0):
-                        posX+=Xchange*2
-                        if(Player.board.board[posY,posX]==0):
-                             if((posX,posY) not in TraveledState):
-                                stackofStates.append((posX,posY))
-                                TraveledState.append((posX,posY))
-                                thereIsChance=True
-                    if(posX+Xchange==end and not thereIsChance):
-                        rightleftChance-=1     
-                    elif(posX+Xchange!=end and Player.board.board[posY-direction,posX+Xchange]!=0):
-                        if((posX,posY-direction*2) not in TraveledState):
-                            stackofStates.append((posX,posY-direction*2))
-                            TraveledState.append((posX,posY-direction*2))
-                        
-                
-                if(rightleftChance==0):
-                    # Player.board.board[meanX,meanY]=0
-                    # Player.board.board[X1,Y1]=0
-                    # Player.board.board[X2,Y2]=0        
-                    return False
-                posX,posY=stackofStates[0]
-                stackofStates.pop(0)
+  
+
+    def WallRestrictionAlgorithmsBFS(self):
+        directions = [(-2, 0), (2, 0), (0, -2), (0, 2)]  # up, down, left, right
+        wall_offsets = [(-1, 0), (1, 0), (0, -1), (0, 1)]  # walls are between tiles
+
+        for i in range(1, Player.pid + 1):
+
+
+            start_y, start_x = Player.positions[i - 1]
+            visited = set()
+            queue = deque([(start_y, start_x)])
+            visited.add((start_y, start_x))
+
+            # Determine the goal row based on the player's objective
+            goal_row = Player.objectives[i-1]
+
+            while queue:
+                y, x = queue.popleft()
+
+                if y == goal_row:
+                    return True  # Found path to the goal row
+
+                for (dy, dx), (wy, wx) in zip(directions, wall_offsets):
+                    ny, nx = y + dy, x + dx
+                    wy, wx = y + dy // 2, x + dx // 2
+
+                    # Check bounds
+                    if 0 <= ny < Player.board.dimBoard and 0 <= nx < Player.board.dimBoard:
+                        # Check for wall between current and new position
+                        if Player.board.board[wy, wx] == 0 and Player.board.board[ny, nx] == 0:
+                            if (ny, nx) not in visited:
+                                visited.add((ny, nx))
+                                queue.append((ny, nx))
+
+            # If the queue empties without reaching the goal row
+            return False
+
         return True
-                
-
-                    
-        #             while(Player.board.board[posX,posY]!=0 and Player.board.board[posX+1,posY-1]==0 and posX<16):
-        #                 posX-=2
-        #         elif(Player.board.board[posX+1,posY-1]!=0):
-        #             stackofStates.append((posX,posY-2))
-        #             posX=stackofStates[0][0]
-                    
-        #             while(Player.board.board[posX,posY]!=0 and Player.board.board[posX-1,posY-1]==0 and posX>0):
-        #                 posX-=2
-        #             if(posX<1):
-        #                 print("invalid ")
-        #                 return False
-        #             elif(Player.board.board[posX-1,posY-1]==0):
-        #                 stackofStates.append((posX,posY-2))
-        #                 stackofStates.pop(0)
-        #                 direction=-direction
-
-        #     stackofStates.append((posX,posY-direction))
-
-
-
-
-
-            
-
-
-        
-
-
-        
-                
-
-                
-
-
-
-
-
-
-        
-    
+   
 
 if __name__=="__main__":
-    p1=Player(pos=[8,8],objective=0)
-    p2=Player(pos=[0,0],objective=16)
-    p1.board.board[5]=[-1,-1,-1,0,-1,-1,-1,0,-1,-1,-1,0,-1,-1,-1,0,0]
-
+    p1 = Player(pos=[16,8], objective=0)  # Human player
+    p2 = Player(pos=[0,8], objective=16)  # AI player with search depth 3
 
     moves =int(input("Give me number of Moves: "))
     print(p1.board.board)
-    for i in range(moves):
-        # if(i%2==0):
-        #     print("the first player who play Now (1)")
-        # else:
-        #     print("the Second Player who play Now (2)")
-        
-        M_W = input("Move or Wall:enter M or W: ")
-        if(M_W == 'M'):
-
-            direction=input("Give me Next move of player: ")
-            # if(i%2==0):
-                
-            print("the player ")
-            p1.move(direction)
-            print(p1.board.board)
-            print("the player position become ",p1.pos)
-            # else:
-                            
-            #     p2.move(direction)
-            #     print(p2.board.board)
-            #     print("the player position become ",p2.pos)
-
-        elif (M_W =='W'):
-
-            X1 = int(input("Give me Next move X1 of wall: "))
-            Y1 = int(input("Give me Next move Y1 of wall: "))
-            X2 = int(input("Give me Next move X2 of wall: "))
-            Y2 = int(input("Give me Next move Y2 of wall: "))
-            p1.walls(X1,Y1,X2,Y2)
-            print(p1.board.board)
-
-
-                
-                
-        check=int(input("Do you want to chech whether the wall placement valid or not "))
-        if(check==1):
-            print("is the wall valid or Not: ",p2.WallRestrictionAlgorithms())
-            
-           
-            
-            
-
-
-        
-
     
+    while(moves!=0):
 
+            if(i%2==0):
+                M_W = input("Move or Wall:enter M or W: ")
+                if(M_W == 'M'):
+                    direction=input("Give me Next move of player: ")
+                    print("the player ")
+                    p1.move(direction)
+                    print(p1.board.board)
+                    print("the player position become ",p1.pos)
+                elif (M_W =='W'):
+                    X1 = int(input("Give me Next move X1 of wall: "))
+                    Y1 = int(input("Give me Next move Y1 of wall: "))
+                    X2 = int(input("Give me Next move X2 of wall: "))
+                    Y2 = int(input("Give me Next move Y2 of wall: "))
+                    p1.walls(X1,Y1,X2,Y2)
+                    print(p1.board.board)
+                    moves-=1
 
-    
-        
-
-            
-
-            
-
-
-
-
-        
-    
+            else:
+                M_W = input("Move or Wall:enter M or W: ")
+                if(M_W == 'M'):
+                    direction=input("Give me Next move of player: ")
+                    print("the player ")
+                    p2.move(direction)
+                    print(p2.board.board)
+                    print("the player position become ",p2.pos)
+                elif (M_W =='W'):
+                    X1 = int(input("Give me Next move X1 of wall: "))
+                    Y1 = int(input("Give me Next move Y1 of wall: "))
+                    X2 = int(input("Give me Next move X2 of wall: "))
+                    Y2 = int(input("Give me Next move Y2 of wall: "))
+                    p2.walls(X1,Y1,X2,Y2)
+                    print(p2.board.board)
+                    moves-=1
+                
