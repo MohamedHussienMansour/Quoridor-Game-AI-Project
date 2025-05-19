@@ -1,34 +1,10 @@
 import pygame
-
-## start test boards ##
-#############################
-# initialize board
-test_board = [[0 for _ in range(17)] for _ in range(17)]
-
-# Players moved
-test_board[4][8] = 1  # Player 1
-test_board[12][8] = 2  # Player 2
-
-# walls placed
-test_board[5][6] = 1
-test_board[5][8] = 1
-test_board[5][7] = 1
-
-## end test boards ##
-#############################
-
-
-PLAYER_1_CODE = 1
-PLAYER_2_CODE = 2
-
-HORIZONTAL_CONNECTOR_CODE = 1
-VERTICAL_CONNECTOR_CODE = 2
+from Board import Board
 
 
 class GameGUI:
     def __init__(
         self,
-        board,
         screen_width=800,
         screen_height=600,
         game_size=9,
@@ -36,17 +12,18 @@ class GameGUI:
         wall_to_wall_gap=8,
     ):
         pygame.init()
-        self.board = board
+        self.board = Board()
         self.screen_width = screen_width
         self.screen_height = screen_height
         self.game_size = game_size
         self.margin = margin
         self.wall_to_wall_gap = wall_to_wall_gap
+        self.current_player_turn = self.board.p1
 
         self.hovered_pos = None
         self.first_wall_part = None
 
-        self.game_surface_side = min(self.screen_height, self.screen_width) * 0.9
+        self.game_surface_side = min(self.screen_height, self.screen_width) * 0.85
         self.game_x_pos = (self.screen_width - self.game_surface_side) / 2
         self.game_y_pos = (self.screen_height - self.game_surface_side) / 2
 
@@ -56,6 +33,7 @@ class GameGUI:
         self.player_radius = round(self.cell_side * 0.4)
 
         self.screen = pygame.display.set_mode((self.screen_width, self.screen_height))
+        self.font = pygame.font.SysFont("arial", 24)
         self.clock = pygame.time.Clock()
         self.running = True
         self.dt = 0
@@ -70,8 +48,8 @@ class GameGUI:
         ):
             return None
 
-        for y in range(len(self.board)):
-            for x in range(len(self.board[y])):
+        for y in range(len(self.board.board)):
+            for x in range(len(self.board.board[y])):
                 is_wall = y % 2 != x % 2  # wall positions only
                 if not is_wall:
                     continue
@@ -89,31 +67,37 @@ class GameGUI:
 
     def handle_click(self):
         if self.hovered_pos is None:
-            return
+            return False
 
         x, y = self.hovered_pos
 
         if self.first_wall_part is None:
-            if self.board[y][x] == 0:
-                self.board[y][x] = 1
+            if self.board.board[y][x] == 0 and self.current_player_turn.available_walls > 0:
+                self.board.board[y][x] = 1
                 self.first_wall_part = (x, y)
+
         else:
             fx, fy = self.first_wall_part
             if (y, x) == (fy, fx):
-                self.board[y][x] = 0
+                self.board.board[y][x] = 0
                 self.first_wall_part = None
             elif self.is_valid_second_part(x, y, fx, fy):
                 # Set second part
-                self.board[y][x] = 1
+                self.board.board[y][x] = 1
                 my = (fy + y) // 2
                 mx = (fx + x) // 2
-                self.board[my][mx] = (
-                    HORIZONTAL_CONNECTOR_CODE if y == fy else VERTICAL_CONNECTOR_CODE
+                self.board.board[my][mx] = (
+                    Board.HORIZONTAL_CONNECTOR_CODE if y == fy else Board.VERTICAL_CONNECTOR_CODE
                 )
                 self.first_wall_part = None
+                self.current_player_turn.available_walls -= 1
+
+                return True
+
+        return False
 
     def is_valid_second_part(self, x, y, fx, fy):
-        if self.board[y][x] != 0:
+        if self.board.board[y][x] != 0:
             return False
 
         if fy % 2 == 1 and fx % 2 == 0:
@@ -124,9 +108,9 @@ class GameGUI:
 
             # Prevent crossing vertical wall (check above and below the midpoint)
             if (
-                self.board[my - 1][mx] == 1
-                and self.board[my][mx] == 2
-                and self.board[my + 1][mx] == 1
+                self.board.board[my - 1][mx] == 1
+                and self.board.board[my][mx] == 2
+                and self.board.board[my + 1][mx] == 1
             ):
                 return False
 
@@ -138,15 +122,18 @@ class GameGUI:
 
             # Prevent crossing horizontal wall (check left and right of midpoint)
             if (
-                self.board[my][mx - 1] == 1
-                and self.board[my][mx] == 1
-                and self.board[my][mx + 1] == 1
+                self.board.board[my][mx - 1] == 1
+                and self.board.board[my][mx] == 1
+                and self.board.board[my][mx + 1] == 1
             ):
                 return False
         else:
             return False
 
-        return True
+        new_board = self.board.board.copy()
+        new_board[y][x] = 1
+
+        return self.current_player_turn.WallRestrictionAlgorithmsBFS(new_board)
 
     def map_board_pos(self, x, y):
         left = (
@@ -237,23 +224,68 @@ class GameGUI:
         self.hovered_pos = self.get_hovered_board_position(mouse_pos)
 
         for event in pygame.event.get():
+            switch_play = False
+
             if event.type == pygame.QUIT:
                 self.running = False
             elif event.type == pygame.MOUSEBUTTONDOWN:
-                self.handle_click()
+                switch_play = self.handle_click()
+            elif event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_DOWN:
+                    switch_play = self.current_player_turn.handle_move("down")
+                elif event.key == pygame.K_UP:
+                    switch_play = self.current_player_turn.handle_move("top")
+                elif event.key == pygame.K_LEFT:
+                    switch_play = self.current_player_turn.handle_move("left")
+                elif event.key == pygame.K_RIGHT:
+                    switch_play = self.current_player_turn.handle_move("right")
+                elif event.key == pygame.K_q:
+                    switch_play = self.current_player_turn.handle_move("topLeft")
+                elif event.key == pygame.K_e:
+                    switch_play = self.current_player_turn.handle_move("topRight")
+                elif event.key == pygame.K_z:
+                    switch_play = self.current_player_turn.handle_move("bottomLeft")
+                elif event.key == pygame.K_c:
+                    switch_play = self.current_player_turn.handle_move("bottomRight")
+
+            if switch_play:
+                if self.current_player_turn == self.board.p1:
+                    self.current_player_turn = self.board.p2
+                else:
+                    self.current_player_turn = self.board.p1
+
+    def draw_indicators(self):
+        # Player 1 indicator (left side)
+        p1_color = "#FFAAAA" if self.current_player_turn == self.board.p1 else "#AAAAAA"
+        p1_text = self.font.render(
+            f"Player 1: {self.board.p1.available_walls} walls",
+            True,
+            p1_color,
+        )
+        self.screen.blit(p1_text, (10, 10))
+
+        # Player 2 indicator (right side)
+        p2_color = "#FF0000" if self.current_player_turn == self.board.p2 else "#AAAAAA"
+        p2_text = self.font.render(
+            f"Player 2: {self.board.p2.available_walls} walls",
+            True,
+            p2_color,
+        )
+        p2_text_width = p2_text.get_width()
+        self.screen.blit(p2_text, (self.screen_width - p2_text_width - 10, 10))
 
     def draw_board(self):
         self.screen.fill("#f3f3f3")
         surface = pygame.Surface((self.game_surface_side, self.game_surface_side))
         surface.fill("#A66676")
 
-        for y in range(len(self.board)):
-            for x in range(len(self.board[y])):
+        for y in range(len(self.board.board)):
+            for x in range(len(self.board.board[y])):
                 is_cell = y % 2 == 0 and x % 2 == 0
                 is_horizontal_wall, is_vertical_wall = self.check_wall_type(x, y)
                 is_connector = (
                     not (is_cell or is_vertical_wall or is_horizontal_wall)
-                    and self.board[y][x] > 0
+                    and self.board.board[y][x] > 0
                 )
 
                 left, top = self.map_board_pos(x, y)
@@ -269,21 +301,21 @@ class GameGUI:
                         border_radius=round(self.cell_side * 0.1),
                     )
 
-                if self.board[y][x] > 0 and is_cell:
+                if self.board.board[y][x] > 0 and is_cell:
                     player_pos = (
                         left + round(self.cell_side / 2),
                         top + round(self.cell_side / 2),
                     )
                     player_color = (
                         pygame.Color("#FFAAAA")
-                        if self.board[y][x] == PLAYER_1_CODE
+                        if self.board.board[y][x] == self.board.p1.id
                         else pygame.Color("#FF0000")
                     )
 
                     pygame.draw.circle(
                         surface, player_color, player_pos, self.player_radius
                     )
-                elif (is_vertical_wall or is_horizontal_wall) and self.board[y][x] > 0:
+                elif (is_vertical_wall or is_horizontal_wall) and self.board.board[y][x] > 0:
                     left, top, width, height = self.get_wall(x, y)
                     pygame.draw.rect(
                         surface,
@@ -291,9 +323,9 @@ class GameGUI:
                         pygame.Rect(left, top, width, height),
                     )
                 elif is_connector:
-                    is_vertical_connector = self.board[y][x] == VERTICAL_CONNECTOR_CODE
+                    is_vertical_connector = self.board.board[y][x] == Board.VERTICAL_CONNECTOR_CODE
                     is_horizontal_connector = (
-                        self.board[y][x] == HORIZONTAL_CONNECTOR_CODE
+                        self.board.board[y][x] == Board.HORIZONTAL_CONNECTOR_CODE
                     )
 
                     left, top, width, height = self.get_wall_connector(
@@ -307,7 +339,7 @@ class GameGUI:
             x, y = self.hovered_pos
 
             if self.first_wall_part is None:
-                if self.board[y][x] == 0:
+                if self.board.board[y][x] == 0:
                     self.draw_preview_wall(surface, x, y)
             else:
                 fx, fy = self.first_wall_part
@@ -315,6 +347,7 @@ class GameGUI:
                     self.draw_preview_wall(surface, x, y)
 
         self.screen.blit(surface, (self.game_x_pos, self.game_y_pos))
+        self.draw_indicators()
         pygame.display.flip()
 
     def run(self):
@@ -328,5 +361,5 @@ class GameGUI:
 
 if __name__ == "__main__":
     # Initialize the game with test board
-    game = GameGUI(test_board)
+    game = GameGUI()
     game.run()

@@ -1,16 +1,15 @@
 import numpy as np
+from Player import Player
 
 
 class Board:
-    def __init__(self, no_players=2, dim=9):
+    HORIZONTAL_CONNECTOR_CODE = 1
+    VERTICAL_CONNECTOR_CODE = 2
+
+    def __init__(self, dim=9):
         self.dimPawnBoard = dim
         self.dimWallBoard = self.dimPawnBoard - 1
         self.dimBoard = self.dimPawnBoard + self.dimWallBoard
         self.board = np.zeros((self.dimBoard, self.dimBoard))
-        self.no_players = no_players
-        self.codesPlayers = range(1, no_players + 1)
-
-
-if __name__ == "__main__":
-    b = Board()
-    print(b.board)
+        self.p1 = Player(board=self, pos=[16, 8], objective=0)
+        self.p2 = Player(board=self, pos=[0, 8], objective=self.dimBoard-1)
