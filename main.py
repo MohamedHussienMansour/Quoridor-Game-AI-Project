@@ -10,6 +10,10 @@ class GameGUI:
         game_size=9,
         margin=10,
         wall_to_wall_gap=8,
+        background_color="#333333",
+        board_background_color="#929292",
+        board_cell_color = "#1E1E2E",
+        wall_color = "#99DD11"
     ):
         pygame.init()
         self.board = Board()
@@ -25,15 +29,19 @@ class GameGUI:
 
         self.game_surface_side = min(self.screen_height, self.screen_width) * 0.85
         self.game_x_pos = (self.screen_width - self.game_surface_side) / 2
-        self.game_y_pos = (self.screen_height - self.game_surface_side) / 2
+        self.game_y_pos = min(self.screen_height, self.screen_width) * 0.025
 
         self.cell_side = round(
             (self.game_surface_side - ((game_size + 1) * self.margin)) / self.game_size
         )
         self.player_radius = round(self.cell_side * 0.4)
 
+        self.board_background_color = board_background_color
+        self.board_cell_color = board_cell_color
+        self.background_color = background_color
+        self.wall_color = wall_color
         self.screen = pygame.display.set_mode((self.screen_width, self.screen_height))
-        self.font = pygame.font.SysFont("arial", 24)
+        self.font = pygame.font.SysFont("arial", 20)
         self.clock = pygame.time.Clock()
         self.running = True
         self.dt = 0
@@ -190,7 +198,7 @@ class GameGUI:
         return left, top, width, height
 
     def draw_preview_wall(self, surface, x, y):
-        color = (255, 255, 255, 120)
+        color = self.wall_color + "99"
         left, top, width, height = self.get_wall(x, y)
         is_horizontal_wall, is_vertical_wall = self.check_wall_type(x, y)
         is_second_part = self.first_wall_part
@@ -255,29 +263,50 @@ class GameGUI:
                     self.current_player_turn = self.board.p1
 
     def draw_indicators(self):
-        # Player 1 indicator (left side)
-        p1_color = "#FFAAAA" if self.current_player_turn == self.board.p1 else "#AAAAAA"
-        p1_text = self.font.render(
-            f"Player 1: {self.board.p1.available_walls} walls",
-            True,
-            p1_color,
-        )
-        self.screen.blit(p1_text, (10, 10))
+        # Texts and colors
+        p1_text_str = f"Player 1 walls: {self.board.p1.available_walls}"
+        p2_text_str = f"Player 2 walls: {self.board.p2.available_walls}"
+        is_p1_turn = self.current_player_turn == self.board.p1
 
-        # Player 2 indicator (right side)
-        p2_color = "#FF0000" if self.current_player_turn == self.board.p2 else "#AAAAAA"
-        p2_text = self.font.render(
-            f"Player 2: {self.board.p2.available_walls} walls",
-            True,
-            p2_color,
+        p1_text = self.font.render(p1_text_str, True, self.board.p1.color)  # Red
+        p2_text = self.font.render(p2_text_str, True, self.board.p2.color)  # Green
+
+        turn_text_str = "Player 1 turn" if is_p1_turn else "Player 2 turn"
+        turn_color = self.board.p1.color if is_p1_turn else self.board.p2.color
+
+        turn_text = self.font.render(turn_text_str, True, (0, 0, 0))
+        turn_bg_rect = turn_text.get_rect()
+        padding = 10
+        turn_bg_rect.inflate_ip(padding * 2, padding)
+
+        # Combined layout size
+        spacing = 20
+        total_width = (
+            p1_text.get_width() + spacing +
+            turn_bg_rect.width + spacing +
+            p2_text.get_width()
         )
-        p2_text_width = p2_text.get_width()
-        self.screen.blit(p2_text, (self.screen_width - p2_text_width - 10, 10))
+        y_pos = self.screen_height - 50  # Near bottom
+        x_start = (self.screen_width - total_width) // 2
+
+        # Blit Player 1
+        self.screen.blit(p1_text, (x_start, y_pos))
+
+        # Blit Turn Indicator Box
+        turn_box_x = x_start + p1_text.get_width() + spacing
+        turn_box_y = y_pos - (turn_bg_rect.height - turn_text.get_height()) // 2
+        pygame.draw.rect(self.screen, turn_color, (turn_box_x, turn_box_y, turn_bg_rect.width, turn_bg_rect.height))
+        pygame.draw.rect(self.screen, (0, 0, 0), (turn_box_x, turn_box_y, turn_bg_rect.width, turn_bg_rect.height), 2)  # border
+        self.screen.blit(turn_text, (turn_box_x + padding, turn_box_y + padding // 2))
+
+        # Blit Player 2
+        p2_x = turn_box_x + turn_bg_rect.width + spacing
+        self.screen.blit(p2_text, (p2_x, y_pos))
 
     def draw_board(self):
-        self.screen.fill("#f3f3f3")
+        self.screen.fill(self.background_color)
         surface = pygame.Surface((self.game_surface_side, self.game_surface_side))
-        surface.fill("#A66676")
+        surface.fill(self.board_background_color)
 
         for y in range(len(self.board.board)):
             for x in range(len(self.board.board[y])):
@@ -296,7 +325,7 @@ class GameGUI:
                     cell = pygame.Rect(left, top, width, height)
                     pygame.draw.rect(
                         surface,
-                        pygame.Color("#611111"),
+                        pygame.Color(self.board_cell_color),
                         cell,
                         border_radius=round(self.cell_side * 0.1),
                     )
@@ -307,9 +336,9 @@ class GameGUI:
                         top + round(self.cell_side / 2),
                     )
                     player_color = (
-                        pygame.Color("#FFAAAA")
+                        pygame.Color(self.board.p1.color)
                         if self.board.board[y][x] == self.board.p1.id
-                        else pygame.Color("#FF0000")
+                        else pygame.Color(self.board.p2.color)
                     )
 
                     pygame.draw.circle(
@@ -319,7 +348,7 @@ class GameGUI:
                     left, top, width, height = self.get_wall(x, y)
                     pygame.draw.rect(
                         surface,
-                        pygame.Color("#F3F3F3"),
+                        pygame.Color(self.wall_color),
                         pygame.Rect(left, top, width, height),
                     )
                 elif is_connector:
@@ -333,7 +362,7 @@ class GameGUI:
                     )
 
                     connector = pygame.Rect(left, top, width, height)
-                    pygame.draw.rect(surface, pygame.Color("#F3F3F3"), connector)
+                    pygame.draw.rect(surface, pygame.Color(self.wall_color), connector)
 
         if self.hovered_pos:
             x, y = self.hovered_pos

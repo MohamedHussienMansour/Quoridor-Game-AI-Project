@@ -1,6 +1,7 @@
 from collections import deque
 
 class Player:
+    colors = ["#467C9E", "#E63946"]
     players = []
     pid = 1
 
@@ -11,6 +12,7 @@ class Player:
         self.available_walls = available_walls
         self.board = board
         self.board.board[pos[0], pos[1]] = self.id
+        self.color = Player.colors[self.id - 1]
 
         Player.pid += 1
         Player.players.append(self)
