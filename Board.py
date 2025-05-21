@@ -13,12 +13,12 @@ class Board:
         self.board = np.zeros((self.dimBoard, self.dimBoard), dtype=int)
         self.againest_ai = againest_ai
 
-        self.p1 = Player(1, self, pos=np.array([0, 8], dtype=int), objective=self.dimBoard - 1)
+        self.p1 = Player(1, self, pos=np.array([16, 8], dtype=int), objective=0)
 
         if self.againest_ai:
-            self.p2 = AIPlayer(2, self, pos=np.array([16, 8], dtype=int), objective=0)
+            self.p2 = AIPlayer(2, self, pos=np.array([0, 8], dtype=int), objective=self.dimBoard - 1)
         else:
-            self.p2 = Player(2, self, pos=np.array([16, 8], dtype=int), objective=0)
+            self.p2 = Player(2, self, pos=np.array([0, 8], dtype=int), objective=self.dimBoard - 1)
 
     def get_state(self):
         return [
