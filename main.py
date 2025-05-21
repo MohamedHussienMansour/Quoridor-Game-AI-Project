@@ -39,9 +39,9 @@ class GameGUI:
         self.hovered_pos = None
         self.first_wall_part = None
 
-        self.game_surface_side = min(self.screen_height, self.screen_width) * 0.85
+        self.game_surface_side = min(self.screen_height, self.screen_width) * 0.80
         self.game_x_pos = (self.screen_width - self.game_surface_side) / 2
-        self.game_y_pos = min(self.screen_height, self.screen_width) * 0.025
+        self.game_y_pos = min(self.screen_height, self.screen_width) * 0.075
 
         self.cell_side = round(
             (self.game_surface_side - ((game_size + 1) * self.margin)) / self.game_size
@@ -146,6 +146,8 @@ class GameGUI:
                 self.first_wall_part = None
                 self.board.current_player_turn.available_walls -= 1
                 return True
+            else:
+                self.show_error("Invalid wall position. Second part not valid.")
 
         return False
 
@@ -437,7 +439,10 @@ class GameGUI:
 
             if self.first_wall_part is None:
                 if self.board.board[y][x] == 0:
-                    self.draw_preview_wall(surface, x, y)
+                    self.board.board[y][x] = 1
+                    if self.any_valid_second_part(x, y):
+                        self.draw_preview_wall(surface, x, y)
+                    self.board.board[y][x] = 0
             else:
                 fx, fy = self.first_wall_part
                 if self.is_valid_second_part(x, y, fx, fy):
