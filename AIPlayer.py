@@ -1,41 +1,47 @@
 from Player import Player
-from Config import VERTICAL_CONNECTOR_CODE, HORIZONTAL_CONNECTOR_CODE
+from Config import WALL_MOVE_CODE, PAWN_MOVE_CODE, VERTICAL_CONNECTOR_CODE, HORIZONTAL_CONNECTOR_CODE
 import math
 from collections import deque
-import time
-import pickle
+
 
 class AIPlayer(Player):
-    def __init__(self, *args, search_depth=1, wall_bonus_weight=1.2, **kwargs):
+    def __init__(self, *args, search_depth=2, wall_bonus_weight=1.2, **kwargs):
         super().__init__(*args, **kwargs)
         self.search_depth = search_depth
         self.wall_bonus_weight = wall_bonus_weight
 
     def apply_move(self, virtual_board, move, maximizing_player, is_virtural=True):
         if is_virtural:
-            new_virtual_board = pickle.loads(pickle.dumps(virtual_board, protocol=-1))
-            if move[0] == 'move':
+            new_virtual_board = [
+                [virtual_board[0][0].copy(), virtual_board[0][1]],
+                [virtual_board[1][0].copy(), virtual_board[1][1]],
+                virtual_board[2].copy()
+            ]
+
+            if move[0] == PAWN_MOVE_CODE:
                 new_virtual_board[2][virtual_board[maximizing_player][0][0], virtual_board[maximizing_player][0][1]] = 0
                 new_virtual_board[maximizing_player][0] = move[1]
                 new_virtual_board[2][new_virtual_board[maximizing_player][0][0], new_virtual_board[maximizing_player][0][1]] = self.board.p2.id if maximizing_player else  self.board.p1.id
-                
+
             else:
                 coordinate1, coordinate2, coordinate3 = move[1]
 
                 new_virtual_board[2][coordinate1[0], coordinate1[1]] = 1
                 new_virtual_board[2][coordinate2[0], coordinate2[1]] = HORIZONTAL_CONNECTOR_CODE if coordinate1[0] == coordinate2[0] else VERTICAL_CONNECTOR_CODE
                 new_virtual_board[2][coordinate3[0], coordinate3[1]] = 1
-            
+
+                new_virtual_board[maximizing_player][1] -= 1
+
             return new_virtual_board
         else:
             board = virtual_board
             player = board.p2 if maximizing_player else board.p1
-            
-            if move[0] == 'move':
+
+            if move[0] == PAWN_MOVE_CODE:
                 board.board[player.pos[0], player.pos[1]] = 0
                 player.pos = move[1]
                 board.board[player.pos[0], player.pos[1]] = player.id
-                
+
             else:
                 coordinate1, coordinate2, coordinate3 = move[1]
 
@@ -43,16 +49,19 @@ class AIPlayer(Player):
                 board.board[coordinate2[0], coordinate2[1]] = HORIZONTAL_CONNECTOR_CODE if coordinate1[0] == coordinate2[0] else VERTICAL_CONNECTOR_CODE
                 board.board[coordinate3[0], coordinate3[1]] = 1
 
+                player.available_walls -= 1
+
             return board
 
-    
     def get_valid_moves(self, virtual_board, maximizing_player):
         moves = []
 
+        # Determine player positions and remaining walls
         by, bx = virtual_board[1][0] if maximizing_player else virtual_board[0][0]
         oy, ox = virtual_board[0][0] if maximizing_player else virtual_board[1][0]
         remaining_walls = virtual_board[1][1] if maximizing_player else virtual_board[0][1]
 
+        # Directions for pawn moves
         directions = {
             'up':    (-2, 0, -1, 0),
             'down':  (2, 0, 1, 0),
@@ -60,63 +69,91 @@ class AIPlayer(Player):
             'right': (0, 2, 0, 1),
         }
 
-        for dir_name, (dy, dx, wy, wx) in directions.items():
+        # Helper: check path exists from start to any goal row
+        def has_path(board, start, goal_rows):
+            from collections import deque
+            visited = [[False]*self.board.dimBoard for _ in range(self.board.dimBoard)]
+            dq = deque([tuple(start)])
+            visited[start[0]][start[1]] = True
+            while dq:
+                y, x = dq.popleft()
+                if y in goal_rows:
+                    return True
+                for dy, dx, wy, wx in directions.values():
+                    ny, nx = y + dy, x + dx
+                    wy_, wx_ = y + wy, x + wx
+                    if (0 <= ny < self.board.dimBoard and 0 <= nx < self.board.dimBoard
+                            and not board[2][wy_][wx_] and not visited[ny][nx]):
+                        visited[ny][nx] = True
+                        dq.append((ny, nx))
+            return False
+
+        # Generate pawn moves
+        for dy, dx, wy, wx in directions.values():
             ny, nx = by + dy, bx + dx
             wall_y, wall_x = by + wy, bx + wx
-
-            # Check for wall blocking movement
+            # Skip if wall blocks direct move or out of bounds
             if not (0 <= wall_y < self.board.dimBoard and 0 <= wall_x < self.board.dimBoard) or virtual_board[2][wall_y][wall_x]:
                 continue
-
-            # If moving into opponent's space
-            if ny == oy and nx == ox:
-                jump_y, jump_x = ny + dy, nx + dx
-                jump_wall_y, jump_wall_x = ny + wy, nx + wx
-
-                if (0 <= jump_y < self.board.dimBoard and 0 <= jump_x < self.board.dimBoard and 
-                    not virtual_board[2][jump_wall_y][jump_wall_x] and 
-                    not virtual_board[2][jump_y][jump_x]):
-                    # Jump over opponent
-                    moves.append(('move', [jump_y, jump_x]))
+            # Opponent jump logic
+            if (ny, nx) == (oy, ox):
+                # Attempt jump
+                jy, jx = ny + dy, nx + dx
+                jwy, jwx = ny + wy, nx + wx
+                if (0 <= jy < self.board.dimBoard and 0 <= jx < self.board.dimBoard
+                        and not virtual_board[2][jwy][jwx] and not virtual_board[2][jy][jx]):
+                    moves.append((PAWN_MOVE_CODE, [jy, jx]))
                     continue
-
-                # Side steps if jump is blocked
-                if dy != 0:  # up/down → try left/right side steps
+                # Side steps
+                if dy != 0:
                     for sdx, swx in [(-2, -1), (2, 1)]:
-                        side_y, side_x = ny, nx + sdx
-                        wall_side_y, wall_side_x = ny, nx + swx
-                        if (0 <= side_x < self.board.dimBoard and not virtual_board[2][wall_side_y][wall_side_x] and 
-                            not virtual_board[2][side_y][side_x]):
-                            moves.append(('move', [side_y, side_x]))
-                else:  # left/right → try up/down side steps
+                        sy, sx = ny, nx + sdx
+                        swy, swx = ny, nx + swx
+                        if (0 <= sx < self.board.dimBoard
+                                and not virtual_board[2][swy][swx] and not virtual_board[2][sy][sx]):
+                            moves.append((PAWN_MOVE_CODE, [sy, sx]))
+                else:
                     for sdy, swy in [(-2, -1), (2, 1)]:
-                        side_y, side_x = ny + sdy, nx
-                        wall_side_y, wall_side_x = ny + swy, nx
-                        if (0 <= side_y < self.board.dimBoard and not virtual_board[2][wall_side_y][wall_side_x] and 
-                            not virtual_board[2][side_y][side_x]):
-                            moves.append(('move', [side_y, side_x]))
+                        sy, sx = ny + sdy, nx
+                        swy, swx = ny + swy, nx
+                        if (0 <= sy < self.board.dimBoard
+                                and not virtual_board[2][swy][swx] and not virtual_board[2][sy][sx]):
+                            moves.append((PAWN_MOVE_CODE, [sy, sx]))
             else:
-                if 0 <= ny < self.board.dimBoard and 0 <= nx < self.board.dimBoard and not virtual_board[2][ny][nx]:
-                    moves.append(('move', [ny, nx]))
+                if (0 <= ny < self.board.dimBoard and 0 <= nx < self.board.dimBoard
+                        and not virtual_board[2][ny][nx]):
+                    moves.append((PAWN_MOVE_CODE, [ny, nx]))
 
-        # Wall placements — return full wall parts as 3 coordinate tuples
+        # Wall placements — ensure not caging any player
         if remaining_walls > 0:
-            for y in range(1, self.board.dimBoard - 1, 2):  # odd y
-                for x in range(1, self.board.dimBoard - 1, 2):  # odd x
-                    # Horizontal wall: spans (y, x-1), (y, x), (y, x+1)
-                    if (x >= 1 and x <= self.board.dimBoard - 2 and
-                        not virtual_board[2][y][x - 1] and
-                        not virtual_board[2][y][x] and
-                        not virtual_board[2][y][x + 1]):
-                        moves.append(('wall', [(y, x - 1), (y, x), (y, x + 1)]))
-
-                    # Vertical wall: spans (y-1, x), (y, x), (y+1, x)
-                    if (y >= 1 and y <= self.board.dimBoard - 2 and
-                        not virtual_board[2][y - 1][x] and
-                        not virtual_board[2][y][x] and
-                        not virtual_board[2][y + 1][x]):
-                        moves.append(('wall', [(y - 1, x), (y, x), (y + 1, x)]))
-
+            # Define goal rows for each player
+            p2_goal = {
+                True: range(self.objective, self.objective + 1),
+                False: range(self.board.p1.objective, self.board.p1.objective + 1)
+            }
+            p1_goal = {
+                True: range(self.board.p1.objective, self.board.p1.objective + 1),
+                False: range(self.objective, self.objective + 1)
+            }
+            for y in range(1, self.board.dimBoard-1, 2):
+                for x in range(1, self.board.dimBoard-1, 2):
+                    # Try both horizontal and vertical
+                    for coords in [[(y, x-1), (y, x), (y, x+1)], [(y-1, x), (y, x), (y+1, x)]]:
+                        # Check cells free
+                        if any(virtual_board[2][wy][wx] for wy, wx in coords):
+                            continue
+                        # Copy board and place wall
+                        new_b = [
+                            [virtual_board[0][0].copy(), virtual_board[0][1]],
+                            [virtual_board[1][0].copy(), virtual_board[1][1]],
+                            [row.copy() for row in virtual_board[2]]
+                        ]
+                        for wy, wx in coords:
+                            new_b[2][wy][wx] = True
+                        # Ensure both players have a path
+                        if (has_path(new_b, new_b[1][0], p2_goal[maximizing_player]) and
+                                has_path(new_b, new_b[0][0], p1_goal[maximizing_player])):
+                            moves.append((WALL_MOVE_CODE, coords))
         return moves
 
     def heuristic(self, virtual_board):
@@ -147,13 +184,13 @@ class AIPlayer(Player):
                     visited[cy][cx + 2] = True
                     queue.append((cy, cx + 2, steps + 1))
 
-            return float('inf')  # No path found
+            return math.inf  # No path found
 
         p1_path = calculate_path(virtual_board[0][0][0], virtual_board[0][0][1], self.board.p1.objective)
-        p2_path = calculate_path(virtual_board[1][0][0], virtual_board[1][0][1], self.board.p2.objective)
+        p2_path = calculate_path(virtual_board[1][0][0], virtual_board[1][0][1], self.objective)
 
         # Base score components
-        path_diff = (p1_path - p2_path)
+        path_diff = (p1_path - p2_path) * 2
 
         # Wall bonus calculation
         wall_bonus = virtual_board[1][1] * self.wall_bonus_weight
@@ -171,7 +208,7 @@ class AIPlayer(Player):
         """Optimized alpha-beta pruning using virtual_board[2]"""
         if virtual_board[0][0][0] == self.board.p1.objective:
             return -math.inf if maximizing_player else math.inf
-        if virtual_board[1][0][0] == self.board.p2.objective:
+        if virtual_board[1][0][0] == self.objective:
             return math.inf if maximizing_player else -math.inf
 
         if depth == 0:
@@ -179,7 +216,7 @@ class AIPlayer(Player):
 
         valid_moves = self.get_valid_moves(virtual_board, maximizing_player)
 
-        valid_moves.sort(key=lambda m: 0 if m[0] == 'move' and (
+        valid_moves.sort(key=lambda m: 0 if m[0] == PAWN_MOVE_CODE and (
             (maximizing_player and m[1] == self.board.p2.objective) or
             (not maximizing_player and m[1] == self.board.p1.objective)
         ) else 1)
@@ -212,15 +249,14 @@ class AIPlayer(Player):
         best_move = None
         best_value = -math.inf
         valid_moves = self.get_valid_moves(virtual_board, True)
-        
+
         for move in valid_moves:
             next_virtual_board = self.apply_move(virtual_board, move, True)
-            
-            value = self.alpha_beta(next_virtual_board, self.search_depth, -math.inf, math.inf, False)
-            
+            value = self.alpha_beta(next_virtual_board, self.search_depth, math.inf, -math.inf, False)
+
             if value > best_value:
                 best_value = value
                 best_move = move
-    
+
         self.apply_move(self.board, best_move, True, is_virtural=False)
 

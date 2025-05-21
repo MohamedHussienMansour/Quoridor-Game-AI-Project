@@ -10,15 +10,15 @@ class Board:
         self.dimWallBoard = self.dimPawnBoard - 1
         self.dimBoard = self.dimPawnBoard + self.dimWallBoard
 
-        self.board = np.zeros((self.dimBoard, self.dimBoard))
+        self.board = np.zeros((self.dimBoard, self.dimBoard), dtype=int)
         self.againest_ai = againest_ai
 
-        self.p1 = Player(1, self, pos=np.array([16, 8]), objective=0)
+        self.p1 = Player(1, self, pos=np.array([0, 8], dtype=int), objective=self.dimBoard - 1)
 
         if self.againest_ai:
-            self.p2 = AIPlayer(2, self, pos=np.array([0, 8]), objective=self.dimBoard - 1)
+            self.p2 = AIPlayer(2, self, pos=np.array([16, 8], dtype=int), objective=0)
         else:
-            self.p2 = Player(2, self, pos=np.array([0, 8]), objective=self.dimBoard - 1)
+            self.p2 = Player(2, self, pos=np.array([16, 8], dtype=int), objective=0)
 
     def get_state(self):
         return [

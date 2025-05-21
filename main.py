@@ -1,6 +1,8 @@
 import pygame
 from Board import Board
 from Config import HORIZONTAL_CONNECTOR_CODE, VERTICAL_CONNECTOR_CODE
+import sys
+import time
 
 class GameGUI:
     def __init__(
@@ -24,6 +26,7 @@ class GameGUI:
         self.margin = margin
         self.wall_to_wall_gap = wall_to_wall_gap
         self.board.current_player_turn = self.board.p1
+        self.ai_move_pending = False
 
         self.hovered_pos = None
         self.first_wall_part = None
@@ -46,6 +49,14 @@ class GameGUI:
         self.clock = pygame.time.Clock()
         self.running = True
         self.dt = 0
+
+    def check_winning_condition(self):
+        if (self.board.p1.pos[0] == self.board.p1.objective):
+            self.running = False
+            self.winner = "Player 1"
+        if (self.board.p2.pos[0] == self.board.p2.objective):
+            self.running = False
+            self.winner = "AI" if self.board.againest_ai else "Player 1"
 
     def get_hovered_board_position(self, mouse_pos):
         x_offset = mouse_pos[0] - self.game_x_pos
@@ -232,6 +243,12 @@ class GameGUI:
         mouse_pos = pygame.mouse.get_pos()
         self.hovered_pos = None if (self.board.againest_ai and self.board.current_player_turn == self.board.p2) else self.get_hovered_board_position(mouse_pos)
 
+        if self.ai_move_pending and self.board.current_player_turn == self.board.p2:
+            self.board.p2.ai_move()
+            self.check_winning_condition()
+            self.board.current_player_turn = self.board.p1
+            self.ai_move_pending = False
+
         for event in pygame.event.get():
             switch_play = False
 
@@ -260,14 +277,16 @@ class GameGUI:
                         switch_play = self.board.current_player_turn.handle_move("bottomRight")
 
             if switch_play:
+                self.check_winning_condition()
                 if self.board.current_player_turn == self.board.p1:
                     self.board.current_player_turn = self.board.p2
 
+                    # Defer AI move
                     if self.board.againest_ai:
-                        self.board.p2.ai_move()
-                        self.board.current_player_turn = self.board.p1
+                        self.ai_move_pending = True
                 else:
                     self.board.current_player_turn = self.board.p1
+
 
     def draw_indicators(self):
         # Texts and colors
@@ -386,16 +405,102 @@ class GameGUI:
         self.draw_indicators()
         pygame.display.flip()
 
+    def show_result_screen(winner):
+        screen = pygame.display.set_mode((400, 200))
+        pygame.display.set_caption("Game Over")
+        font = pygame.font.SysFont(None, 36)
+        clock = pygame.time.Clock()
+
+        message = f"{winner} Won!" if winner else "Draw!"
+        text = font.render(message, True, (255, 255, 255))
+        text_rect = text.get_rect(center=(200, 100))
+
+        waiting = True
+        start_time = time.time()
+
+        while waiting:
+            screen.fill((0, 0, 0))
+            screen.blit(text, text_rect)
+
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    pygame.quit()
+                    sys.exit()
+                if event.type == pygame.KEYDOWN or event.type == pygame.MOUSEBUTTONDOWN:
+                    waiting = False
+
+            # Auto-exit after 3 seconds
+            if time.time() - start_time > 3:
+                waiting = False
+
+            pygame.display.flip()
+            clock.tick(60)
+
     def run(self):
         while self.running:
             self.handle_events()
             self.draw_board()
             self.dt = self.clock.tick(60) / 1000
 
-        pygame.quit()
+        return self.winner
 
+
+class Menu:
+    def __init__(self):
+        pygame.init()
+        self.screen = pygame.display.set_mode((400, 200))
+        pygame.display.set_caption("Select Game Mode")
+        self.clock = pygame.time.Clock()
+        self.running = True
+        self.selected_ai_mode = None  # Will be set to True or False
+
+        self.buttons = {
+            "vs_ai": pygame.Rect(50, 70, 130, 50),
+            "vs_human": pygame.Rect(220, 70, 130, 50),
+        }
+
+    def draw_buttons(self):
+        font = pygame.font.SysFont(None, 24)
+
+        def draw_button(rect, label):
+            pygame.draw.rect(self.screen, (70, 130, 180), rect)
+            text = font.render(label, True, (255, 255, 255))
+            text_rect = text.get_rect(center=rect.center)
+            self.screen.blit(text, text_rect)
+
+        draw_button(self.buttons["vs_ai"], "VS AI")
+        draw_button(self.buttons["vs_human"], "VS Human")
+
+    def run(self):
+        while self.running:
+            self.screen.fill((30, 30, 30))
+            self.draw_buttons()
+
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    self.running = False
+                    pygame.quit()
+                    sys.exit()
+                if event.type == pygame.MOUSEBUTTONDOWN:
+                    pos = event.pos
+                    if self.buttons["vs_ai"].collidepoint(pos):
+                        self.selected_ai_mode = True
+                        self.running = False
+                    elif self.buttons["vs_human"].collidepoint(pos):
+                        self.selected_ai_mode = False
+                        self.running = False
+
+            pygame.display.flip()
+            self.clock.tick(60)
+
+        return self.selected_ai_mode
 
 if __name__ == "__main__":
-    # Initialize the game with test board
-    game = GameGUI()
-    game.run()
+    while True:
+        menu = Menu()
+        against_ai = menu.run()
+
+        game = GameGUI(againest_ai=against_ai)
+        result = game.run()
+
+        GameGUI.show_result_screen(result)
