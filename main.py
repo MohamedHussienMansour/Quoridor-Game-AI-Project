@@ -32,6 +32,9 @@ class GameGUI:
         self.loading = False  # New flag to track loading state
         self.ai_move_result = None  # Store AI move result
         self.winner = None
+        self.error_message = ""
+        self.error_timer = 0  # milliseconds
+        self.font = pygame.font.SysFont(None, 24)  # or any font you prefer
 
         self.hovered_pos = None
         self.first_wall_part = None
@@ -90,6 +93,22 @@ class GameGUI:
                     return (x, y)
         return None
 
+    def any_valid_second_part(self, fx, fy):
+        # Check possible directions for wall orientation
+        directions = [(-2, 0), (2, 0), (0, -2), (0, 2)]  # left, right, up, down
+
+        for dx, dy in directions:
+            x2, y2 = fx + dx, fy + dy
+            if 0 <= x2 < len(self.board.board[0]) and 0 <= y2 < len(self.board.board):
+                if self.is_valid_second_part(x2, y2, fx, fy):
+                    return True
+
+        return False
+
+    def show_error(self, message):
+        self.error_message = message
+        self.error_timer = pygame.time.get_ticks() + 2000  # show for 2 seconds
+
     def handle_click(self):
         if self.hovered_pos is None:
             return False
@@ -98,8 +117,18 @@ class GameGUI:
 
         if self.first_wall_part is None:
             if self.board.board[y][x] == 0 and self.board.current_player_turn.available_walls > 0:
+                # Tentatively place first wall part
                 self.board.board[y][x] = 1
                 self.first_wall_part = (x, y)
+
+                # Check if any valid second part exists
+                if not self.any_valid_second_part(x, y):
+                    # Revert the tentative placement
+                    self.board.board[y][x] = 0
+                    self.first_wall_part = None
+                    self.show_error("Invalid wall position. No valid second part.")
+
+                    return False
 
         else:
             fx, fy = self.first_wall_part
@@ -116,7 +145,6 @@ class GameGUI:
                 )
                 self.first_wall_part = None
                 self.board.current_player_turn.available_walls -= 1
-
                 return True
 
         return False
@@ -443,6 +471,10 @@ class GameGUI:
                 x = center[0] + radius * math.cos(rad)
                 y = center[1] - radius + radius * math.sin(rad)
                 pygame.draw.circle(self.screen, (0, 0, 255), (int(x), int(y)), 5)
+
+        if self.error_message and pygame.time.get_ticks() < self.error_timer:
+            error_surface = self.font.render(self.error_message, True, (255, 0, 0))
+            self.screen.blit(error_surface, (10, 10))  # Change position as needed
 
         pygame.display.flip()
 
