@@ -1,5 +1,4 @@
 # Quoridor-Game-AI-Project
-# Quoridor AI Project Documentation
 
 ## Overview
 This project implements an AI player for the classic board game Quoridor using Python and Pygame. The AI uses alpha-beta pruning with a heuristic evaluation function to make strategic decisions about pawn movement and wall placement.
