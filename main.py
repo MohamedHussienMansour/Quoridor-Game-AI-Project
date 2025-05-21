@@ -1,10 +1,11 @@
 import pygame
 from Board import Board
-
+from Config import HORIZONTAL_CONNECTOR_CODE, VERTICAL_CONNECTOR_CODE
 
 class GameGUI:
     def __init__(
         self,
+        againest_ai=True,
         screen_width=800,
         screen_height=600,
         game_size=9,
@@ -16,13 +17,13 @@ class GameGUI:
         wall_color = "#99DD11"
     ):
         pygame.init()
-        self.board = Board()
+        self.board = Board(againest_ai=againest_ai)
         self.screen_width = screen_width
         self.screen_height = screen_height
         self.game_size = game_size
         self.margin = margin
         self.wall_to_wall_gap = wall_to_wall_gap
-        self.current_player_turn = self.board.p1
+        self.board.current_player_turn = self.board.p1
 
         self.hovered_pos = None
         self.first_wall_part = None
@@ -80,7 +81,7 @@ class GameGUI:
         x, y = self.hovered_pos
 
         if self.first_wall_part is None:
-            if self.board.board[y][x] == 0 and self.current_player_turn.available_walls > 0:
+            if self.board.board[y][x] == 0 and self.board.current_player_turn.available_walls > 0:
                 self.board.board[y][x] = 1
                 self.first_wall_part = (x, y)
 
@@ -95,10 +96,10 @@ class GameGUI:
                 my = (fy + y) // 2
                 mx = (fx + x) // 2
                 self.board.board[my][mx] = (
-                    Board.HORIZONTAL_CONNECTOR_CODE if y == fy else Board.VERTICAL_CONNECTOR_CODE
+                    HORIZONTAL_CONNECTOR_CODE if y == fy else VERTICAL_CONNECTOR_CODE
                 )
                 self.first_wall_part = None
-                self.current_player_turn.available_walls -= 1
+                self.board.current_player_turn.available_walls -= 1
 
                 return True
 
@@ -141,7 +142,7 @@ class GameGUI:
         new_board = self.board.board.copy()
         new_board[y][x] = 1
 
-        return self.current_player_turn.WallRestrictionAlgorithmsBFS(new_board)
+        return self.board.current_player_turn.WallRestrictionAlgorithmsBFS(new_board)
 
     def map_board_pos(self, x, y):
         left = (
@@ -163,7 +164,7 @@ class GameGUI:
 
         return is_horizontal_wall, is_vertical_wall
 
-    def get_wall(self, x, y):
+    def get_wall_properties(self, x, y):
         is_horizontal_wall, is_vertical_wall = self.check_wall_type(x, y)
 
         left, top = self.map_board_pos(x, y)
@@ -199,7 +200,7 @@ class GameGUI:
 
     def draw_preview_wall(self, surface, x, y):
         color = self.wall_color + "99"
-        left, top, width, height = self.get_wall(x, y)
+        left, top, width, height = self.get_wall_properties(x, y)
         is_horizontal_wall, is_vertical_wall = self.check_wall_type(x, y)
         is_second_part = self.first_wall_part
 
@@ -229,44 +230,50 @@ class GameGUI:
 
     def handle_events(self):
         mouse_pos = pygame.mouse.get_pos()
-        self.hovered_pos = self.get_hovered_board_position(mouse_pos)
+        self.hovered_pos = None if (self.board.againest_ai and self.board.current_player_turn == self.board.p2) else self.get_hovered_board_position(mouse_pos)
 
         for event in pygame.event.get():
             switch_play = False
 
             if event.type == pygame.QUIT:
                 self.running = False
-            elif event.type == pygame.MOUSEBUTTONDOWN:
-                switch_play = self.handle_click()
-            elif event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_DOWN:
-                    switch_play = self.current_player_turn.handle_move("down")
-                elif event.key == pygame.K_UP:
-                    switch_play = self.current_player_turn.handle_move("top")
-                elif event.key == pygame.K_LEFT:
-                    switch_play = self.current_player_turn.handle_move("left")
-                elif event.key == pygame.K_RIGHT:
-                    switch_play = self.current_player_turn.handle_move("right")
-                elif event.key == pygame.K_q:
-                    switch_play = self.current_player_turn.handle_move("topLeft")
-                elif event.key == pygame.K_e:
-                    switch_play = self.current_player_turn.handle_move("topRight")
-                elif event.key == pygame.K_z:
-                    switch_play = self.current_player_turn.handle_move("bottomLeft")
-                elif event.key == pygame.K_c:
-                    switch_play = self.current_player_turn.handle_move("bottomRight")
+
+            elif not (self.board.againest_ai and self.board.current_player_turn == self.board.p2):
+                if event.type == pygame.MOUSEBUTTONDOWN:
+                    switch_play = self.handle_click()
+                if event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_DOWN:
+                        switch_play = self.board.current_player_turn.handle_move("down")
+                    elif event.key == pygame.K_UP:
+                        switch_play = self.board.current_player_turn.handle_move("top")
+                    elif event.key == pygame.K_LEFT:
+                        switch_play = self.board.current_player_turn.handle_move("left")
+                    elif event.key == pygame.K_RIGHT:
+                        switch_play = self.board.current_player_turn.handle_move("right")
+                    elif event.key == pygame.K_q:
+                        switch_play = self.board.current_player_turn.handle_move("topLeft")
+                    elif event.key == pygame.K_e:
+                        switch_play = self.board.current_player_turn.handle_move("topRight")
+                    elif event.key == pygame.K_z:
+                        switch_play = self.board.current_player_turn.handle_move("bottomLeft")
+                    elif event.key == pygame.K_c:
+                        switch_play = self.board.current_player_turn.handle_move("bottomRight")
 
             if switch_play:
-                if self.current_player_turn == self.board.p1:
-                    self.current_player_turn = self.board.p2
+                if self.board.current_player_turn == self.board.p1:
+                    self.board.current_player_turn = self.board.p2
+
+                    if self.board.againest_ai:
+                        self.board.p2.ai_move()
+                        self.board.current_player_turn = self.board.p1
                 else:
-                    self.current_player_turn = self.board.p1
+                    self.board.current_player_turn = self.board.p1
 
     def draw_indicators(self):
         # Texts and colors
         p1_text_str = f"Player 1 walls: {self.board.p1.available_walls}"
         p2_text_str = f"Player 2 walls: {self.board.p2.available_walls}"
-        is_p1_turn = self.current_player_turn == self.board.p1
+        is_p1_turn = self.board.current_player_turn == self.board.p1
 
         p1_text = self.font.render(p1_text_str, True, self.board.p1.color)  # Red
         p2_text = self.font.render(p2_text_str, True, self.board.p2.color)  # Green
@@ -345,16 +352,16 @@ class GameGUI:
                         surface, player_color, player_pos, self.player_radius
                     )
                 elif (is_vertical_wall or is_horizontal_wall) and self.board.board[y][x] > 0:
-                    left, top, width, height = self.get_wall(x, y)
+                    left, top, width, height = self.get_wall_properties(x, y)
                     pygame.draw.rect(
                         surface,
                         pygame.Color(self.wall_color),
                         pygame.Rect(left, top, width, height),
                     )
                 elif is_connector:
-                    is_vertical_connector = self.board.board[y][x] == Board.VERTICAL_CONNECTOR_CODE
+                    is_vertical_connector = self.board.board[y][x] == VERTICAL_CONNECTOR_CODE
                     is_horizontal_connector = (
-                        self.board.board[y][x] == Board.HORIZONTAL_CONNECTOR_CODE
+                        self.board.board[y][x] == HORIZONTAL_CONNECTOR_CODE
                     )
 
                     left, top, width, height = self.get_wall_connector(

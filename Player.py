@@ -2,20 +2,15 @@ from collections import deque
 
 class Player:
     colors = ["#467C9E", "#E63946"]
-    players = []
-    pid = 1
 
-    def __init__(self, board, pos, objective, available_walls=10):
+    def __init__(self, id, board, pos, objective, available_walls=10):
+        self.id = id
         self.objective = objective
-        self.id = Player.pid
         self.pos = pos
         self.available_walls = available_walls
         self.board = board
-        self.board.board[pos[0], pos[1]] = self.id
+        self.board.board[self.pos[0], self.pos[1]] = self.id
         self.color = Player.colors[self.id - 1]
-
-        Player.pid += 1
-        Player.players.append(self)
 
     def handle_move(self, direction):
         if not self.move(direction):
@@ -141,7 +136,7 @@ class Player:
         directions = [(-2, 0), (2, 0), (0, -2), (0, 2)]  # up, down, left, right
         wall_offsets = [(-1, 0), (1, 0), (0, -1), (0, 1)]  # walls are between tiles
 
-        for player in Player.players:
+        for player in [self.board.p1, self.board.p2]:
             start_y, start_x = player.pos
             visited = set()
             queue = deque([(start_y, start_x)])
