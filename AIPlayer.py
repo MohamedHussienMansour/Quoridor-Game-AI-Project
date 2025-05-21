@@ -2,10 +2,10 @@ from Player import Player
 from Config import WALL_MOVE_CODE, PAWN_MOVE_CODE, VERTICAL_CONNECTOR_CODE, HORIZONTAL_CONNECTOR_CODE
 import math
 from collections import deque
-
+import heapq
 
 class AIPlayer(Player):
-    def __init__(self, *args, search_depth=2, wall_bonus_weight=1.2, **kwargs):
+    def __init__(self, *args, search_depth=1, wall_bonus_weight=1, **kwargs):
         super().__init__(*args, **kwargs)
         self.search_depth = search_depth
         self.wall_bonus_weight = wall_bonus_weight
@@ -21,7 +21,7 @@ class AIPlayer(Player):
             if move[0] == PAWN_MOVE_CODE:
                 new_virtual_board[2][virtual_board[maximizing_player][0][0], virtual_board[maximizing_player][0][1]] = 0
                 new_virtual_board[maximizing_player][0] = move[1]
-                new_virtual_board[2][new_virtual_board[maximizing_player][0][0], new_virtual_board[maximizing_player][0][1]] = self.board.p2.id if maximizing_player else  self.board.p1.id
+                new_virtual_board[2][new_virtual_board[maximizing_player][0][0], new_virtual_board[maximizing_player][0][1]] = self.board.p2.id if maximizing_player else self.board.p1.id
 
             else:
                 coordinate1, coordinate2, coordinate3 = move[1]
@@ -156,52 +156,55 @@ class AIPlayer(Player):
                             moves.append((WALL_MOVE_CODE, coords))
         return moves
 
-    def heuristic(self, virtual_board):
-        """Simplified and more effective heuristic function using virtual_board[2]"""
-        def calculate_path(y, x, target_row):
-            visited = [[False] * self.board.dimBoard for _ in range(self.board.dimBoard)]
-            queue = deque([(y, x, 0)])
-            visited[y][x] = True
 
-            while queue:
-                cy, cx, steps = queue.popleft()
+
+    def heuristic(self, virtual_board):
+        """Heuristic function using A* for both players"""
+        def manhattan_distance(y1, x1, y2):
+            return abs(y1 - y2)  # Only vertical movement matters for goal row
+
+        def a_star_path(y, x, target_row):
+            visited = [[False] * self.board.dimBoard for _ in range(self.board.dimBoard)]
+            heap = [(manhattan_distance(y, x, target_row), 0, y, x)]  # (f, g, y, x)
+
+            while heap:
+                f, g, cy, cx = heapq.heappop(heap)
                 if cy == target_row:
-                    return steps
-                # Up
-                if cy >= 2 and not virtual_board[2][cy - 1][cx] and not visited[cy - 2][cx]:
-                    visited[cy - 2][cx] = True
-                    queue.append((cy - 2, cx, steps + 1))
-                # Down
-                if cy <= self.board.dimBoard - 2 and not virtual_board[2][cy + 1][cx] and not visited[cy + 2][cx]:
-                    visited[cy + 2][cx] = True
-                    queue.append((cy + 2, cx, steps + 1))
-                # Left
-                if cx >= 2 and not virtual_board[2][cy][cx - 1] and not visited[cy][cx - 2]:
-                    visited[cy][cx - 2] = True
-                    queue.append((cy, cx - 2, steps + 1))
-                # Right
-                if cx <= self.board.dimBoard - 2 and not virtual_board[2][cy][cx + 1] and not visited[cy][cx + 2]:
-                    visited[cy][cx + 2] = True
-                    queue.append((cy, cx + 2, steps + 1))
+                    return g
+                if visited[cy][cx]:
+                    continue
+                visited[cy][cx] = True
+
+                # Directions: (dy, dx, wall_y, wall_x)
+                directions = [
+                    (-2, 0, cy - 1, cx),  # Up
+                    (2, 0, cy + 1, cx),   # Down
+                    (0, -2, cy, cx - 1),  # Left
+                    (0, 2, cy, cx + 1)    # Right
+                ]
+
+                for dy, dx, wy, wx in directions:
+                    ny, nx = cy + dy, cx + dx
+                    if 0 <= ny < self.board.dimBoard and 0 <= nx < self.board.dimBoard:
+                        if not virtual_board[2][wy][wx] and not visited[ny][nx]:
+                            h = manhattan_distance(ny, nx, target_row)
+                            heapq.heappush(heap, (g + 1 + h, g + 1, ny, nx))
 
             return math.inf  # No path found
 
-        p1_path = calculate_path(virtual_board[0][0][0], virtual_board[0][0][1], self.board.p1.objective)
-        p2_path = calculate_path(virtual_board[1][0][0], virtual_board[1][0][1], self.objective)
+        p1_path = a_star_path(virtual_board[0][0][0], virtual_board[0][0][1], self.board.p1.objective)
+        p2_path = a_star_path(virtual_board[1][0][0], virtual_board[1][0][1], self.objective)
 
-        # Base score components
-        path_diff = (p1_path - p2_path) * 2
-
-        # Wall bonus calculation
+        path_diff = (p1_path - p2_path) * 4
         wall_bonus = virtual_board[1][1] * self.wall_bonus_weight
 
-        # Immediate win conditions
         if p1_path == 0:
             return -math.inf
         if p2_path == 0:
             return math.inf
 
         return path_diff + wall_bonus
+
 
 
     def alpha_beta(self, virtual_board, depth, alpha, beta, maximizing_player):
@@ -217,8 +220,8 @@ class AIPlayer(Player):
         valid_moves = self.get_valid_moves(virtual_board, maximizing_player)
 
         valid_moves.sort(key=lambda m: 0 if m[0] == PAWN_MOVE_CODE and (
-            (maximizing_player and m[1] == self.board.p2.objective) or
-            (not maximizing_player and m[1] == self.board.p1.objective)
+            (maximizing_player and m[1][0] == self.board.p2.objective) or
+            (not maximizing_player and m[1][0] == self.board.p1.objective)
         ) else 1)
 
         if maximizing_player:
@@ -250,13 +253,19 @@ class AIPlayer(Player):
         best_value = -math.inf
         valid_moves = self.get_valid_moves(virtual_board, True)
 
-        for move in valid_moves:
-            next_virtual_board = self.apply_move(virtual_board, move, True)
-            value = self.alpha_beta(next_virtual_board, self.search_depth, math.inf, -math.inf, False)
+        fast_win_move = next((m for m in valid_moves if m[0] == PAWN_MOVE_CODE and m[1][0] == self.board.p2.objective), None)
 
-            if value > best_value:
-                best_value = value
-                best_move = move
+        if not fast_win_move:
+            for move in valid_moves:
+                next_virtual_board = self.apply_move(virtual_board, move, True)
+                value = self.alpha_beta(next_virtual_board, self.search_depth, -math.inf, math.inf, False)
 
-        self.apply_move(self.board, best_move, True, is_virtural=False)
+                if value > best_value:
+                    best_value = value
+                    best_move = move
+
+            self.apply_move(self.board, best_move, True, is_virtural=False)
+
+        else:
+            self.apply_move(self.board, fast_win_move, True, is_virtural=False)
 

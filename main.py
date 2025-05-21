@@ -3,6 +3,8 @@ from Board import Board
 from Config import HORIZONTAL_CONNECTOR_CODE, VERTICAL_CONNECTOR_CODE
 import sys
 import time
+import threading
+import math
 
 class GameGUI:
     def __init__(
@@ -27,6 +29,9 @@ class GameGUI:
         self.wall_to_wall_gap = wall_to_wall_gap
         self.board.current_player_turn = self.board.p1
         self.ai_move_pending = False
+        self.loading = False  # New flag to track loading state
+        self.ai_move_result = None  # Store AI move result
+        self.winner = None
 
         self.hovered_pos = None
         self.first_wall_part = None
@@ -240,52 +245,61 @@ class GameGUI:
                 surface.blit(s, (left, top))
 
     def handle_events(self):
-        mouse_pos = pygame.mouse.get_pos()
-        self.hovered_pos = None if (self.board.againest_ai and self.board.current_player_turn == self.board.p2) else self.get_hovered_board_position(mouse_pos)
+            mouse_pos = pygame.mouse.get_pos()
+            self.hovered_pos = None if (self.board.againest_ai and self.board.current_player_turn == self.board.p2) else self.get_hovered_board_position(mouse_pos)
 
-        if self.ai_move_pending and self.board.current_player_turn == self.board.p2:
-            self.board.p2.ai_move()
-            self.check_winning_condition()
-            self.board.current_player_turn = self.board.p1
-            self.ai_move_pending = False
-
-        for event in pygame.event.get():
-            switch_play = False
-
-            if event.type == pygame.QUIT:
-                self.running = False
-
-            elif not (self.board.againest_ai and self.board.current_player_turn == self.board.p2):
-                if event.type == pygame.MOUSEBUTTONDOWN:
-                    switch_play = self.handle_click()
-                if event.type == pygame.KEYDOWN:
-                    if event.key == pygame.K_DOWN:
-                        switch_play = self.board.current_player_turn.handle_move("down")
-                    elif event.key == pygame.K_UP:
-                        switch_play = self.board.current_player_turn.handle_move("top")
-                    elif event.key == pygame.K_LEFT:
-                        switch_play = self.board.current_player_turn.handle_move("left")
-                    elif event.key == pygame.K_RIGHT:
-                        switch_play = self.board.current_player_turn.handle_move("right")
-                    elif event.key == pygame.K_q:
-                        switch_play = self.board.current_player_turn.handle_move("topLeft")
-                    elif event.key == pygame.K_e:
-                        switch_play = self.board.current_player_turn.handle_move("topRight")
-                    elif event.key == pygame.K_z:
-                        switch_play = self.board.current_player_turn.handle_move("bottomLeft")
-                    elif event.key == pygame.K_c:
-                        switch_play = self.board.current_player_turn.handle_move("bottomRight")
-
-            if switch_play:
-                self.check_winning_condition()
-                if self.board.current_player_turn == self.board.p1:
-                    self.board.current_player_turn = self.board.p2
-
-                    # Defer AI move
-                    if self.board.againest_ai:
-                        self.ai_move_pending = True
-                else:
+            # Check if AI move has completed
+            if self.ai_move_pending and not self.loading:
+                self.loading = True  # Set loading state
+                # Start AI move in a separate thread
+                def ai_move_thread():
+                    move = self.board.p2.ai_move()  # Compute AI move
+                    self.ai_move_result = move  # Store result
+                    self.ai_move_pending = False  # Reset pending flag
+                    self.loading = False  # Reset loading state
+                    self.current_player_turn = self.board.p1
+                    self.check_winning_condition()
                     self.board.current_player_turn = self.board.p1
+                    self.ai_move_result = None  # Clear result
+
+                threading.Thread(target=ai_move_thread, daemon=True).start()
+
+            for event in pygame.event.get():
+                switch_play = False
+
+                if event.type == pygame.QUIT:
+                    self.running = False
+
+                # Only allow player input if not AI's turn and not loading
+                elif not (self.board.againest_ai and self.board.current_player_turn == self.board.p2) and not self.loading:
+                    if event.type == pygame.MOUSEBUTTONDOWN:
+                        switch_play = self.handle_click()
+                    if event.type == pygame.KEYDOWN:
+                        if event.key == pygame.K_DOWN:
+                            switch_play = self.board.current_player_turn.handle_move("down")
+                        elif event.key == pygame.K_UP:
+                            switch_play = self.board.current_player_turn.handle_move("top")
+                        elif event.key == pygame.K_LEFT:
+                            switch_play = self.board.current_player_turn.handle_move("left")
+                        elif event.key == pygame.K_RIGHT:
+                            switch_play = self.board.current_player_turn.handle_move("right")
+                        elif event.key == pygame.K_q:
+                            switch_play = self.board.current_player_turn.handle_move("topLeft")
+                        elif event.key == pygame.K_e:
+                            switch_play = self.board.current_player_turn.handle_move("topRight")
+                        elif event.key == pygame.K_z:
+                            switch_play = self.board.current_player_turn.handle_move("bottomLeft")
+                        elif event.key == pygame.K_c:
+                            switch_play = self.board.current_player_turn.handle_move("bottomRight")
+
+                if switch_play:
+                    self.check_winning_condition()
+                    if self.board.current_player_turn == self.board.p1:
+                        self.board.current_player_turn = self.board.p2
+                        if self.board.againest_ai:
+                            self.ai_move_pending = True  # Defer AI move
+                    else:
+                        self.board.current_player_turn = self.board.p1
 
 
     def draw_indicators(self):
@@ -403,6 +417,33 @@ class GameGUI:
 
         self.screen.blit(surface, (self.game_x_pos, self.game_y_pos))
         self.draw_indicators()
+
+        if self.loading:
+            # Define rectangle dimensions
+            rect_width = 300
+            rect_height = 150
+            rect_x = self.screen.get_width() // 2 - rect_width // 2
+            rect_y = self.screen.get_height() // 2 - rect_height // 2
+
+            # Draw white rectangle as background
+            pygame.draw.rect(self.screen, (255, 255, 255, 100), (rect_x, rect_y, rect_width, rect_height))
+
+            # Draw "AI is thinking..." text
+            font = pygame.font.SysFont('arial', 30)
+            loading_text = font.render("AI is thinking...", True, (0, 0, 0))
+            text_rect = loading_text.get_rect(center=(self.screen.get_width() // 2, self.screen.get_height() // 2 + 40))
+            self.screen.blit(loading_text, text_rect)
+
+            # Spinning circle animation
+            angle = (pygame.time.get_ticks() / 1000) * 360  # Rotate based on time
+            radius = 20
+            center = (self.screen.get_width() // 2, self.screen.get_height() // 2)
+            for i in range(8):
+                rad = math.radians(angle + i * 45)
+                x = center[0] + radius * math.cos(rad)
+                y = center[1] - radius + radius * math.sin(rad)
+                pygame.draw.circle(self.screen, (0, 0, 255), (int(x), int(y)), 5)
+
         pygame.display.flip()
 
     def show_result_screen(winner):
@@ -498,9 +539,10 @@ class Menu:
 if __name__ == "__main__":
     while True:
         menu = Menu()
-        against_ai = menu.run()
+        againest_ai = menu.run()
 
-        game = GameGUI(againest_ai=against_ai)
+        game = GameGUI(againest_ai=againest_ai)
         result = game.run()
 
-        GameGUI.show_result_screen(result)
+        if result:
+            GameGUI.show_result_screen(result)
